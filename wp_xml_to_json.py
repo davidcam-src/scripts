@@ -1,5 +1,7 @@
 import os
 import re
+import json
+
 
 def read_file(file_path):
     """
@@ -12,7 +14,7 @@ def read_file(file_path):
     return content
 
 
-def select_items(array_of_lines, include_tags=None):
+def select_items(array_of_lines):
      # Create regex for skipping specified tags
     i = 0
     all_items = []  
@@ -31,9 +33,43 @@ def select_items(array_of_lines, include_tags=None):
         else:
             i += 1
             print("Skipping line #: ", i)
-    print("Writing out items")
-    write_out(all_items, "../processed_files", "items", 250000, 1)
+    return all_items
 
+def filer_items(all_items):
+    indexes = []
+    for i in range(len(all_items)):
+        for line in all_items[i]:
+            if "<wp:post_type><![CDATA[page]]></wp:post_type>" in line:
+                i+=1
+                indexes.append(i)
+                break
+    print("Indexes: ", indexes)
+    filtered_items = [all_items[i] for i in indexes]
+    # write_out(filtered_items, '../processed_files', 'filtered_items', max_lines=250000, total_parts=1)
+    return filtered_items
+
+import re
+
+def items_to_json(filtered_items, included_tags):
+    json_items = []
+
+    # Compile regex for extracting tag content
+    tag_pattern = re.compile(r"<\s*({})\s*>(.*?)</\s*\1\s*>".format("|".join(included_tags)))
+
+    for item in filtered_items:
+        json_item = {}
+        for line in item:
+            # Match line against the pattern
+            match = tag_pattern.search(line)
+            if match:
+                tag = match.group(1)  
+                content = match.group(2) 
+                json_item[tag] = content 
+        if json_item:  
+            json_items.append(json_item)
+
+    write_out(json_items, '../processed_files', 'json_items', max_lines=250000, total_parts=1)
+    return json_items
 
 
 def write_out(lines_array, output_dir, output_filename, max_lines=250000, total_parts=1):
@@ -75,4 +111,11 @@ def write_out(lines_array, output_dir, output_filename, max_lines=250000, total_
         print(f"File successfully split into {chunk_index - 1} parts.")
 
 include_tags = ['title','link','content:encoded','excerpt:encoded','wp:post_type']
-select_items(read_file('../unprocessed_files/wordpress_unc_oct_2024.xml'), include_tags)
+selected_items = select_items(read_file('../unprocessed_files/wordpress_unc_oct_2024.xml'))
+filtered_items = filer_items(selected_items)
+json_items = items_to_json(filtered_items, include_tags)
+# Save to a JSON file
+output_file = "../processed_files/output.json"
+with open(output_file, "w", encoding="utf-8") as f:
+    json.dump(json_items, f, indent=4, ensure_ascii=False)
+print(f"JSON data saved to {output_file}.")
